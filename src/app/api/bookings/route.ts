@@ -1,39 +1,59 @@
 import { NextRequest, NextResponse } from "next/server";
-import { promises as fs } from "fs";
-import path from "path";
-import { randomUUID } from "crypto";
+import { supabase } from "@/lib/supabase";
 import { Booking, BookingInput } from "@/lib/types";
 
-const DB_PATH = path.join(process.cwd(), "db.json");
-
-async function readBookings(): Promise<Booking[]> {
-  const raw = await fs.readFile(DB_PATH, "utf-8");
-  const data = JSON.parse(raw);
-  return data.bookings ?? [];
+interface BookingRow {
+  id: string;
+  customer_name: string;
+  vehicle_number: string;
+  date: string;
+  service_type: string;
+  status: Booking["status"];
 }
 
-async function writeBookings(bookings: Booking[]): Promise<void> {
-  await fs.writeFile(DB_PATH, JSON.stringify({ bookings }, null, 2), "utf-8");
+function toBooking(row: BookingRow): Booking {
+  return {
+    id: row.id,
+    customerName: row.customer_name,
+    vehicleNumber: row.vehicle_number,
+    date: row.date,
+    serviceType: row.service_type,
+    status: row.status,
+  };
+}
+
+function toRow(input: BookingInput) {
+  return {
+    customer_name: input.customerName,
+    vehicle_number: input.vehicleNumber,
+    date: input.date,
+    service_type: input.serviceType,
+    status: input.status,
+  };
 }
 
 export async function GET() {
-  try {
-    const bookings = await readBookings();
-    return NextResponse.json(bookings);
-  } catch {
+  const { data, error } = await supabase
+    .from("bookings")
+    .select("*")
+    .order("date", { ascending: true });
+
+  if (error) {
     return NextResponse.json({ error: "Failed to load bookings." }, { status: 500 });
   }
+  return NextResponse.json((data ?? []).map(toBooking));
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    const input: BookingInput = await request.json();
-    const bookings = await readBookings();
-    const newBooking: Booking = { id: randomUUID(), ...input };
-    bookings.push(newBooking);
-    await writeBookings(bookings);
-    return NextResponse.json(newBooking, { status: 201 });
-  } catch {
+  const input: BookingInput = await request.json();
+  const { data, error } = await supabase
+    .from("bookings")
+    .insert(toRow(input))
+    .select()
+    .single();
+
+  if (error || !data) {
     return NextResponse.json({ error: "Failed to create booking." }, { status: 500 });
   }
+  return NextResponse.json(toBooking(data), { status: 201 });
 }
