@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
+
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -6,14 +8,16 @@ export const metadata: Metadata = {
   description: "Feature-complete CRUD for mechanic service bookings",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+type RootLayoutProps = {
+  children: ReactNode;
+};
+
+export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="en">
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        {children}
+      </body>
     </html>
   );
 }
