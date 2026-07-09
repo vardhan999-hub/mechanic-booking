@@ -1,53 +1,63 @@
 import { NextRequest, NextResponse } from "next/server";
-import { promises as fs } from "fs";
-import path from "path";
+import { supabase } from "@/lib/supabase";
 import { Booking, BookingInput } from "@/lib/types";
 
-const DB_PATH = path.join(process.cwd(), "db.json");
-
-async function readBookings(): Promise<Booking[]> {
-  const raw = await fs.readFile(DB_PATH, "utf-8");
-  const data = JSON.parse(raw);
-  return data.bookings ?? [];
+interface BookingRow {
+  id: string;
+  customer_name: string;
+  vehicle_number: string;
+  date: string;
+  service_type: string;
+  status: Booking["status"];
 }
 
-async function writeBookings(bookings: Booking[]): Promise<void> {
-  await fs.writeFile(DB_PATH, JSON.stringify({ bookings }, null, 2), "utf-8");
+function toBooking(row: BookingRow): Booking {
+  return {
+    id: row.id,
+    customerName: row.customer_name,
+    vehicleNumber: row.vehicle_number,
+    date: row.date,
+    serviceType: row.service_type,
+    status: row.status,
+  };
+}
+
+function toRow(input: BookingInput) {
+  return {
+    customer_name: input.customerName,
+    vehicle_number: input.vehicleNumber,
+    date: input.date,
+    service_type: input.serviceType,
+    status: input.status,
+  };
 }
 
 export async function PUT(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  try {
-    const input: BookingInput = await request.json();
-    const bookings = await readBookings();
-    const index = bookings.findIndex((b) => b.id === params.id);
-    if (index === -1) {
-      return NextResponse.json({ error: "Booking not found." }, { status: 404 });
-    }
-    const updated: Booking = { id: params.id, ...input };
-    bookings[index] = updated;
-    await writeBookings(bookings);
-    return NextResponse.json(updated);
-  } catch {
-    return NextResponse.json({ error: "Failed to update booking." }, { status: 500 });
+  const input: BookingInput = await request.json();
+  const { data, error } = await supabase
+    .from("bookings")
+    .update(toRow(input))
+    .eq("id", params.id)
+    .select()
+    .single();
+
+  if (error || !data) {
+    return NextResponse.json({ error: "Booking not found." }, { status: 404 });
   }
+  return NextResponse.json(toBooking(data));
 }
 
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  try {
-    const bookings = await readBookings();
-    const filtered = bookings.filter((b) => b.id !== params.id);
-    if (filtered.length === bookings.length) {
-      return NextResponse.json({ error: "Booking not found." }, { status: 404 });
-    }
-    await writeBookings(filtered);
-    return NextResponse.json({ success: true });
-  } catch {
+  const { error } = await supabase.from("bookings").delete().eq("id", params.id);
+
+  if (error) {
     return NextResponse.json({ error: "Failed to delete booking." }, { status: 500 });
   }
+  return NextResponse.json({ success: true });
 }
